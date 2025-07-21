@@ -7,8 +7,11 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "fire
 import { TrendingUp, TrendingDown, Trash2, CheckCircle, XCircle, BarChart as BarChartIcon, PieChart as PieChartIcon, Camera, X as XIcon, Edit2 } from 'lucide-react';
 
 // --- Firebase Configuration ---
-const firebaseConfig = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
-const appId = process.env.REACT_APP_APP_ID || 'default-app-id';
+// This configuration is provided by the environment.
+// eslint-disable-next-line no-undef
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+// eslint-disable-next-line no-undef
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // --- Main App Component ---
 export default function App() {
