@@ -19,7 +19,6 @@ export default function App() {
     const [incomeGoal, setIncomeGoal] = useState(6000);
     const [db, setDb] = useState(null);
     const [storage, setStorage] = useState(null);
-    const [auth, setAuth] = useState(null);
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -33,7 +32,6 @@ export default function App() {
             const storageInstance = getStorage(app);
             setDb(dbInstance);
             setStorage(storageInstance);
-            setAuth(authInstance);
             setLogLevel('debug');
 
             const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
@@ -187,14 +185,24 @@ const Dashboard = ({ debts, incomes }) => {
     const [viewMode, setViewMode] = useState('all');
     const [chartType, setChartType] = useState('bar');
     const [filter, setFilter] = useState('all');
-    const { monthlyIncomes, monthlyDebts } = useMemo(() => { const filteredIncomes = incomes.filter(i => { const incomeDate = new Date(i.date); return incomeDate.getFullYear() === currentDate.getFullYear() && incomeDate.getMonth() === currentDate.getMonth(); }); const filteredDebts = debts.filter(d => { const debtDate = new Date(d.date); return debtDate.getFullYear() === currentDate.getFullYear() && debtDate.getMonth() === currentDate.getMonth(); }); return { monthlyIncomes: filteredIncomes, monthlyDebts: filteredDebts }; }, [incomes, debts, currentDate]);
-    const dataSet = viewMode === 'monthly' ? { incomes: monthlyIncomes, debts: monthlyDebts } : { incomes, debts };
+
+    const { monthlyIncomes, monthlyDebts } = useMemo(() => {
+        const filteredIncomes = incomes.filter(i => { const incomeDate = new Date(i.date); return incomeDate.getFullYear() === currentDate.getFullYear() && incomeDate.getMonth() === currentDate.getMonth(); });
+        const filteredDebts = debts.filter(d => { const debtDate = new Date(d.date); return debtDate.getFullYear() === currentDate.getFullYear() && debtDate.getMonth() === currentDate.getMonth(); });
+        return { monthlyIncomes: filteredIncomes, monthlyDebts: filteredDebts };
+    }, [incomes, debts, currentDate]);
+
+    const dataSet = useMemo(() => {
+        return viewMode === 'monthly' ? { incomes: monthlyIncomes, debts: monthlyDebts } : { incomes, debts };
+    }, [viewMode, monthlyIncomes, monthlyDebts, incomes, debts]);
+
     const totalIncome = useMemo(() => dataSet.incomes.reduce((sum, i) => sum + Number(i.amount), 0), [dataSet.incomes]);
     const outstandingDebt = useMemo(() => dataSet.debts.filter(d => !d.paid).reduce((sum, d) => sum + Number(d.amount), 0), [dataSet.debts]);
     const paidDebt = useMemo(() => dataSet.debts.filter(d => d.paid).reduce((sum, d) => sum + Number(d.amount), 0), [dataSet.debts]);
     const chartData = [{ name: 'Income', value: totalIncome, color: '#2dd4bf', filterKey: 'income' }, { name: 'Outstanding Debt', value: outstandingDebt, color: '#f87171', filterKey: 'outstanding' }, { name: 'Paid Debt', value: paidDebt, color: '#4ade80', filterKey: 'paid' }];
     const filteredData = useMemo(() => { let data = []; switch (filter) { case 'income': data = dataSet.incomes.map(i => ({ ...i, type: 'Income' })); break; case 'outstanding': data = dataSet.debts.filter(d => !d.paid).map(d => ({ ...d, type: 'Debt' })); break; case 'paid': data = dataSet.debts.filter(d => d.paid).map(d => ({ ...d, type: 'Debt' })); break; default: data = [...dataSet.incomes.map(i => ({ ...i, type: 'Income' })), ...dataSet.debts.map(d => ({ ...d, type: 'Debt' }))]; } return data.sort((a, b) => new Date(b.date) - new Date(a.date)); }, [filter, dataSet]);
     const handleChartClick = (payload) => { if (!payload || !payload.activePayload || !payload.activePayload[0]) { setFilter('all'); return; } const clickedFilter = payload.activePayload[0].payload.filterKey; setFilter(current => (current === clickedFilter ? 'all' : clickedFilter)); };
+    
     return (
         <div className="space-y-8 animate-fade-in">
             <h1 className="text-3xl font-bold text-center text-teal-400">Dashboard</h1>
