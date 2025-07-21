@@ -41,7 +41,9 @@ export default function App() {
                     setUserId(user.uid);
                 } else {
                     try {
+                        // eslint-disable-next-line no-undef
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            // eslint-disable-next-line no-undef
                             await signInWithCustomToken(authInstance, __initial_auth_token);
                         } else {
                             await signInAnonymously(authInstance);
