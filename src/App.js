@@ -1,152 +1,68 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, getDoc, setDoc, setLogLevel } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { TrendingUp, TrendingDown, Trash2, CheckCircle, XCircle, BarChart as BarChartIcon, PieChart as PieChartIcon, Camera, X as XIcon, Edit2 } from 'lucide-react';
-
-// --- Firebase Configuration ---
-// This configuration is provided by the environment.
-// eslint-disable-next-line no-undef
-const firebaseConfig = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
-// eslint-disable-next-line no-undef
-const appId = process.env.REACT_APP_APP_ID || 'default-app-id';
+import { TrendingUp, TrendingDown, Trash2, CheckCircle, XCircle, BarChart as BarChartIcon, PieChart as PieChartIcon, Edit2, X as XIcon } from 'lucide-react';
 
 // --- Main App Component ---
 export default function App() {
     // --- State Management ---
     const [view, setView] = useState('dashboard');
-    const [debts, setDebts] = useState([]);
-    const [incomes, setIncomes] = useState([]);
-    const [incomeGoal, setIncomeGoal] = useState(6000);
-    const [db, setDb] = useState(null);
-    const [storage, setStorage] = useState(null);
-    const [userId, setUserId] = useState(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
+    
+    // Initialize state from localStorage or with default values
+    const [debts, setDebts] = useState(() => {
+        const savedDebts = localStorage.getItem('debts');
+        return savedDebts ? JSON.parse(savedDebts) : [];
+    });
+    const [incomes, setIncomes] = useState(() => {
+        const savedIncomes = localStorage.getItem('incomes');
+        return savedIncomes ? JSON.parse(savedIncomes) : [];
+    });
+    const [incomeGoal, setIncomeGoal] = useState(() => {
+        const savedGoal = localStorage.getItem('incomeGoal');
+        return savedGoal ? JSON.parse(savedGoal) : 6000;
+    });
 
-    // --- Firebase Initialization and Auth ---
+    // --- Data Persistence using localStorage ---
     useEffect(() => {
-        try {
-            const app = initializeApp(firebaseConfig);
-            const authInstance = getAuth(app);
-            const dbInstance = getFirestore(app);
-            const storageInstance = getStorage(app);
-            setDb(dbInstance);
-            setStorage(storageInstance);
-            setLogLevel('debug');
+        localStorage.setItem('debts', JSON.stringify(debts));
+    }, [debts]);
 
-            const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-                if (user) {
-                    setUserId(user.uid);
-                } else {
-                    try {
-                        // eslint-disable-next-line no-undef
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            // eslint-disable-next-line no-undef
-                            await signInWithCustomToken(authInstance, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(authInstance);
-                        }
-                    } catch (error) {
-                        console.error("Error during sign-in:", error);
-                    }
-                }
-                setIsAuthReady(true);
-            });
-            return () => unsubscribe();
-        } catch (error) {
-            console.error("Firebase initialization error:", error);
-            setIsAuthReady(true);
-        }
-    }, []);
-
-    // --- Data Fetching from Firestore ---
     useEffect(() => {
-        if (!isAuthReady || !db || !userId) {
-            if(isAuthReady) setIsLoading(false);
-            return;
-        }
+        localStorage.setItem('incomes', JSON.stringify(incomes));
+    }, [incomes]);
 
-        setIsLoading(true);
-        const debtColPath = `artifacts/${appId}/users/${userId}/debts`;
-        const incomeColPath = `artifacts/${appId}/users/${userId}/incomes`;
-        const goalDocPath = `artifacts/${appId}/users/${userId}/settings`;
+    useEffect(() => {
+        localStorage.setItem('incomeGoal', JSON.stringify(incomeGoal));
+    }, [incomeGoal]);
 
-        const debtQuery = query(collection(db, debtColPath));
-        const incomeQuery = query(collection(db, incomeColPath));
-        const goalDocRef = doc(db, goalDocPath, 'incomeGoal');
-
-        const unsubDebts = onSnapshot(debtQuery, (snap) => { setDebts(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setIsLoading(false); }, (err) => { console.error(err); setIsLoading(false); });
-        const unsubIncomes = onSnapshot(incomeQuery, (snap) => { setIncomes(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, (err) => console.error(err));
-        const unsubGoal = onSnapshot(goalDocRef, (doc) => {
-            if (doc.exists()) {
-                setIncomeGoal(doc.data().goal);
-            }
-        }, (err) => console.error(err));
-
-        return () => { unsubDebts(); unsubIncomes(); unsubGoal(); };
-    }, [isAuthReady, db, userId]);
 
     // --- Data Handling Functions ---
-    const handleAdd = async (type, item) => {
-        if (!db || !storage || !userId) return;
-
-        let imageUrl = '';
-        let imagePath = '';
-
-        if (item.imageFile) {
-            const filePath = `artifacts/${appId}/users/${userId}/${Date.now()}-${item.imageFile.name}`;
-            const storageRef = ref(storage, filePath);
-            await uploadBytes(storageRef, item.imageFile);
-            imageUrl = await getDownloadURL(storageRef);
-            imagePath = filePath;
-        }
-        
-        const { imageFile, ...dataToSave } = item;
-        
-        const colPath = `artifacts/${appId}/users/${userId}/${type}`;
-        try {
-            const dateToStore = dataToSave.date ? dataToSave.date : new Date().toISOString();
-            await addDoc(collection(db, colPath), { ...dataToSave, date: dateToStore, userId, imageUrl, imagePath });
-        } catch (error) {
-            console.error(`Error adding ${type}:`, error);
+    const handleAdd = (type, item) => {
+        const newItem = {
+            id: Date.now().toString(), // Simple unique ID
+            ...item,
+            date: item.date || new Date().toISOString(),
+        };
+        if (type === 'debts') {
+            setDebts(prevDebts => [...prevDebts, newItem]);
+        } else {
+            setIncomes(prevIncomes => [...prevIncomes, newItem]);
         }
     };
 
-    const handleUpdateDebt = async (id, newStatus) => {
-        if (!db || !userId) return;
-        const docRef = doc(db, `artifacts/${appId}/users/${userId}/debts`, id);
-        try { await updateDoc(docRef, { paid: newStatus }); } catch (error) { console.error("Error updating debt:", error); }
+    const handleUpdateDebt = (id, newStatus) => {
+        setDebts(debts.map(debt => debt.id === id ? { ...debt, paid: newStatus } : debt));
     };
 
-    const handleDelete = async (type, id) => {
-        if (!db || !storage || !userId) return;
-        const docRef = doc(db, `artifacts/${appId}/users/${userId}/${type}`, id);
-        try {
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const { imagePath } = docSnap.data();
-                if (imagePath) {
-                    const imageRef = ref(storage, imagePath);
-                    await deleteObject(imageRef).catch(err => console.error("Error deleting image from storage:", err));
-                }
-            }
-            await deleteDoc(docRef);
-        } catch (error) {
-            console.error(`Error deleting ${type}:`, error);
+    const handleDelete = (type, id) => {
+        if (type === 'debts') {
+            setDebts(debts.filter(debt => debt.id !== id));
+        } else {
+            setIncomes(incomes.filter(income => income.id !== id));
         }
     };
     
-    const handleUpdateGoal = async (newGoal) => {
-        if (!db || !userId) return;
-        const goalDocRef = doc(db, `artifacts/${appId}/users/${userId}/settings`, 'incomeGoal');
-        try {
-            await setDoc(goalDocRef, { goal: newGoal });
-        } catch (error) {
-            console.error("Error updating goal:", error);
-        }
+    const handleUpdateGoal = (newGoal) => {
+        setIncomeGoal(newGoal);
     };
 
     // --- Render Logic ---
@@ -157,8 +73,6 @@ export default function App() {
             default: return <Dashboard debts={debts} incomes={incomes} />;
         }
     };
-
-    if (isLoading) { return <div className="flex items-center justify-center h-screen bg-gray-900 text-white"><div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-teal-500"></div></div>; }
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans flex flex-col">
@@ -188,13 +102,8 @@ const Dashboard = ({ debts, incomes }) => {
     const [viewMode, setViewMode] = useState('all');
     const [chartType, setChartType] = useState('bar');
     const [filter, setFilter] = useState('all');
-
-    const { monthlyIncomes, monthlyDebts } = useMemo(() => {
-        const filteredIncomes = incomes.filter(i => { const incomeDate = new Date(i.date); return incomeDate.getFullYear() === currentDate.getFullYear() && incomeDate.getMonth() === currentDate.getMonth(); });
-        const filteredDebts = debts.filter(d => { const debtDate = new Date(d.date); return debtDate.getFullYear() === currentDate.getFullYear() && debtDate.getMonth() === currentDate.getMonth(); });
-        return { monthlyIncomes: filteredIncomes, monthlyDebts: filteredDebts };
-    }, [incomes, debts, currentDate]);
-
+    const { monthlyIncomes, monthlyDebts } = useMemo(() => { const filteredIncomes = incomes.filter(i => { const incomeDate = new Date(i.date); return incomeDate.getFullYear() === currentDate.getFullYear() && incomeDate.getMonth() === currentDate.getMonth(); }); const filteredDebts = debts.filter(d => { const debtDate = new Date(d.date); return debtDate.getFullYear() === currentDate.getFullYear() && debtDate.getMonth() === currentDate.getMonth(); }); return { monthlyIncomes: filteredIncomes, monthlyDebts: filteredDebts }; }, [incomes, debts, currentDate]);
+    
     const dataSet = useMemo(() => {
         return viewMode === 'monthly' ? { incomes: monthlyIncomes, debts: monthlyDebts } : { incomes, debts };
     }, [viewMode, monthlyIncomes, monthlyDebts, incomes, debts]);
@@ -240,28 +149,14 @@ const EntryForm = ({ type, onSubmit }) => {
     const [name, setName] = useState('');
     const [amount, setAmount] = useState('');
     const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
-    const [imageFile, setImageFile] = useState(null);
-    const [imagePreview, setImagePreview] = useState('');
-
-    const handleImageChange = (e) => {
-        if (e.target.files[0]) {
-            setImageFile(e.target.files[0]);
-            setImagePreview(URL.createObjectURL(e.target.files[0]));
-        }
-    };
     
-    const removeImage = () => {
-        setImageFile(null);
-        setImagePreview('');
-    };
-
     const handleSubmit = (e) => {
         e.preventDefault();
         if (name && amount > 0 && entryDate) {
-            const data = { name, amount: parseFloat(amount), date: new Date(entryDate).toISOString(), imageFile };
+            const data = { name, amount: parseFloat(amount), date: new Date(entryDate).toISOString() };
             if (type === 'debt') data.paid = false;
             onSubmit(data);
-            setName(''); setAmount(''); setImageFile(null); setImagePreview('');
+            setName(''); setAmount('');
         }
     };
     
@@ -274,16 +169,7 @@ const EntryForm = ({ type, onSubmit }) => {
                 <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={isDebt ? 'Debt Name' : 'Income Source'} className="md:col-span-2 w-full bg-gray-700 p-2 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" />
                 <input type="date" value={entryDate} onChange={e => setEntryDate(e.target.value)} className="w-full bg-gray-700 p-2 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                 <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" className="w-full md:col-span-2 bg-gray-700 p-2 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                 <div className="flex items-center space-x-2">
-                    {imagePreview ? (
-                        <div className="relative"><img src={imagePreview} alt="Preview" className="h-10 w-10 rounded object-cover"/><button type="button" onClick={removeImage} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-0.5"><XIcon size={14} /></button></div>
-                    ) : (
-                        <label className="flex-1 cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition-colors text-center"><Camera size={20} className="inline-block mr-2"/><span>Attach</span><input type="file" accept="image/*" className="hidden" onChange={handleImageChange} /></label>
-                    )}
-                </div>
-            </div>
+            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" className="w-full bg-gray-700 p-2 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500" />
             <button type="submit" className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded transition-colors">Add {isDebt ? 'Debt' : 'Income'}</button>
         </form>
     );
@@ -320,20 +206,19 @@ const DebtTracker = ({ debts, onAddDebt, onUpdateDebt, onDeleteDebt }) => {
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left table-auto">
-                        <thead><tr className="border-b border-gray-600 text-gray-400"><th className="p-2 w-12"></th><th className="p-2">Name</th><th className="p-2">Amount</th><th className="p-2 hidden sm:table-cell">Date</th><th className="p-2">Status</th><th className="p-2 text-right">Actions</th></tr></thead>
+                        <thead><tr className="border-b border-gray-600 text-gray-400"><th className="p-2">Name</th><th className="p-2">Amount</th><th className="p-2 hidden sm:table-cell">Date</th><th className="p-2">Status</th><th className="p-2 text-right">Actions</th></tr></thead>
                         <tbody>
                             {displayedDebts.length > 0 ? displayedDebts.map((debt, index) => (
                                 <tr key={debt.id} className={`border-b border-gray-700 ${index % 2 === 0 ? 'bg-gray-900/50' : ''} ${debt.paid ? 'opacity-60' : ''}`}>
-                                    <td className="p-2">{debt.imageUrl && <a href={debt.imageUrl} target="_blank" rel="noopener noreferrer"><img src={debt.imageUrl} alt={debt.name} className="h-10 w-10 rounded-md object-cover"/></a>}</td>
                                     <td className="p-2 font-medium">{debt.name}</td>
                                     <td className={`p-2 ${debt.paid ? 'text-green-400' : 'text-red-400'}`}>₱{Number(debt.amount).toLocaleString()}</td>
                                     <td className="p-2 text-sm text-gray-500 hidden sm:table-cell">{new Date(debt.date).toLocaleDateString()}</td>
                                     <td className="p-2"><span className={`px-2 py-1 text-xs rounded-full ${debt.paid ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{debt.paid ? 'Paid' : 'Unpaid'}</span></td>
                                     <td className="p-2 text-right"><div className="flex justify-end items-center space-x-2"><Tooltip tip={debt.paid ? 'Mark as Unpaid' : 'Mark as Paid'}><button onClick={() => onUpdateDebt(debt.id, !debt.paid)} className={`p-2 rounded-full ${debt.paid ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'}`}>{debt.paid ? <XCircle size={18} /> : <CheckCircle size={18} />}</button></Tooltip><Tooltip tip="Delete Debt"><button onClick={() => onDeleteDebt(debt.id)} className="bg-red-600 hover:bg-red-700 p-2 rounded-full"><Trash2 size={18} /></button></Tooltip></div></td>
                                 </tr>
-                            )) : (<tr><td colSpan="6" className="text-center text-gray-500 py-4">No debts recorded for this period.</td></tr>)}
+                            )) : (<tr><td colSpan="5" className="text-center text-gray-500 py-4">No debts recorded for this period.</td></tr>)}
                         </tbody>
-                        <tfoot className="border-t-2 border-gray-600 font-bold"><tr className="text-right"><td colSpan="6" className="p-2">{viewMode === 'monthly' ? 'Monthly' : 'Grand'} Total: <span className="text-red-400">₱{displayedTotal.toLocaleString()}</span></td></tr></tfoot>
+                        <tfoot className="border-t-2 border-gray-600 font-bold"><tr className="text-right"><td colSpan="5" className="p-2">{viewMode === 'monthly' ? 'Monthly' : 'Grand'} Total: <span className="text-red-400">₱{displayedTotal.toLocaleString()}</span></td></tr></tfoot>
                     </table>
                 </div>
             </div>
@@ -406,19 +291,18 @@ const IncomeTracker = ({ incomes, onAddIncome, onDeleteIncome, monthlyGoal, onUp
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left table-auto">
-                        <thead><tr className="border-b border-gray-600 text-gray-400"><th className="p-2 w-12"></th><th className="p-2">Source</th><th className="p-2">Amount</th><th className="p-2 hidden sm:table-cell">Date</th><th className="p-2 text-right">Action</th></tr></thead>
+                        <thead><tr className="border-b border-gray-600 text-gray-400"><th className="p-2">Source</th><th className="p-2">Amount</th><th className="p-2 hidden sm:table-cell">Date</th><th className="p-2 text-right">Action</th></tr></thead>
                         <tbody>
                             {displayedIncomes.length > 0 ? displayedIncomes.map((income, index) => (
                                 <tr key={income.id} className={`border-b border-gray-700 ${index % 2 === 0 ? 'bg-gray-900/50' : ''}`}>
-                                    <td className="p-2">{income.imageUrl && <a href={income.imageUrl} target="_blank" rel="noopener noreferrer"><img src={income.imageUrl} alt={income.name} className="h-10 w-10 rounded-md object-cover"/></a>}</td>
                                     <td className="p-2 font-medium">{income.name}</td>
                                     <td className="p-2 text-green-400">₱{Number(income.amount).toLocaleString()}</td>
                                     <td className="p-2 text-sm text-gray-500 hidden sm:table-cell">{new Date(income.date).toLocaleDateString()}</td>
                                     <td className="p-2"><div className="flex justify-end items-center"><Tooltip tip="Delete Income"><button onClick={() => onDeleteIncome(income.id)} className="text-red-500 hover:text-red-400 p-2 rounded-full hover:bg-gray-700"><Trash2 size={18} /></button></Tooltip></div></td>
                                 </tr>
-                            )) : (<tr><td colSpan="5" className="text-center text-gray-500 py-4">No income recorded for this period.</td></tr>)}
+                            )) : (<tr><td colSpan="4" className="text-center text-gray-500 py-4">No income recorded for this period.</td></tr>)}
                         </tbody>
-                        <tfoot className="border-t-2 border-gray-600 font-bold"><tr className="text-right"><td colSpan="5" className="p-2">{viewMode === 'monthly' ? 'Monthly' : 'Grand'} Total: <span className="text-green-400">₱{displayedTotal.toLocaleString()}</span></td></tr></tfoot>
+                        <tfoot className="border-t-2 border-gray-600 font-bold"><tr className="text-right"><td colSpan="4" className="p-2">{viewMode === 'monthly' ? 'Monthly' : 'Grand'} Total: <span className="text-green-400">₱{displayedTotal.toLocaleString()}</span></td></tr></tfoot>
                     </table>
                 </div>
             </div>
